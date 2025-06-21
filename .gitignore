@@ -1,0 +1,18 @@
+# Исключаем объектные файлы, бинарники, временные файлы и системные каталоги
+obj/
+*.o
+*.bin
+*.iso
+*.img
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+.DS_Store
+*.out
+*.elf
+*.map
+*.exe
+__pycache__/
+.vscode/
