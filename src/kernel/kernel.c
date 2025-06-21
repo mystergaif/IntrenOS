@@ -566,7 +566,7 @@ void cmd_rm(char* args) {
     }
 
     console_printf("Removed '%s'\n", args);
-    save_file_system_metadata(); // Save changes to disk
+    save_file_system(); // Save changes to disk
 }
 
 void cmd_pwd() {
