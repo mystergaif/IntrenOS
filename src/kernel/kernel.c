@@ -6,12 +6,12 @@
 #include "gdt.h"
 #include "idt.h"
 #include "keyboard.h"
-#include "mouse.h" // Explicitly include mouse.h for g_status
+#include "mouse.h"
 #include "vesa.h"
 #include "io_ports.h"
-#include "filesystem.h" // Include the new filesystem header
-#include "vga.h" // Explicitly include vga.h for color constants and VGA_WIDTH
-#include "game/snake.h" // Include snake game header
+#include "filesystem.h"
+#include "vga.h"
+#include "game/snake.h"
 
 // Global flag to signal program exit
 volatile int g_exit_program = 0;
@@ -47,138 +47,6 @@ uint8 bcd_to_bin(uint8 bcd) {
 #define MAX_LINES 100
 #define MAX_EDITOR_SIZE (MAX_LINE_LENGTH * MAX_LINES)
 
-// File system structures and defines (Disk based)
-#define MAX_FILES 100
-#define MAX_FILENAME 32
-#define MAX_PATH_LENGTH 256
-#define DISK_SECTOR_SIZE 512
-#define FS_METADATA_LBA DISK_STORAGE_START_LBA // LBA for file system metadata
-#define FS_METADATA_SECTORS 64 // Number of sectors for file system metadata (approx 100 FileEntry structs)
-#define DISK_STORAGE_START_LBA 1024 // Start writing files after the first 1024 sectors (bootloader, kernel, etc.)
-
-typedef struct {
-    char name[MAX_FILENAME];
-    char path[MAX_PATH_LENGTH];
-    int is_directory;
-    int size; // Size in bytes
-    uint32 start_lba; // Starting Logical Block Address on disk
-    uint32 num_sectors; // Number of sectors occupied on disk
-    int permissions; // Simple permissions (e.g., 0755)
-} FileEntry;
-
-FileEntry file_system[MAX_FILES];
-int file_count = 0;
-char current_dir[MAX_PATH_LENGTH] = "/";
-char home_dir[MAX_PATH_LENGTH] = "/";
-
-// Function to save the file system metadata to disk
-void save_file_system_metadata() {
-    // Calculate the size of the file_system array in bytes
-    uint32 metadata_size = file_count * sizeof(FileEntry);
-    // Calculate the number of sectors needed (round up)
-    uint8 num_sectors = (metadata_size + DISK_SECTOR_SIZE - 1) / DISK_SECTOR_SIZE;
-
-    // Ensure we don't exceed the allocated sectors
-    if (num_sectors > FS_METADATA_SECTORS) {
-        console_putstr("Error: File system metadata exceeds allocated space on disk!\n");
-        return;
-    }
-
-    // Write the file_system array to disk
-    write_to_disk(FS_METADATA_LBA, num_sectors, (uint32)file_system);
-}
-
-// Function to initialize the disk-based file system
-void init_file_system() {
-    // Attempt to load file system structure from disk
-    uint8 read_status = ide_read_sectors(0, FS_METADATA_SECTORS, FS_METADATA_LBA, (uint32)file_system);
-
-    // Check if loading was successful and data seems valid (e.g., file_count is reasonable)
-    // A more robust check would involve a magic number or checksum
-    if (read_status == 0 && file_system[0].is_directory == 1 && strcmp(file_system[0].path, "/") == 0) {
-        // Assuming file_count is stored implicitly by the number of valid entries read
-        // Need to determine the actual file_count from the loaded data
-        file_count = 0;
-        for(int i = 0; i < MAX_FILES; i++) {
-            // Simple check: if path is not empty, consider it a valid entry
-            if(file_system[i].path[0] != '\0') {
-                file_count++;
-            } else {
-                break; // Stop if we find an empty entry
-            }
-        }
-        console_putstr("File system loaded from disk.\n");
-    } else {
-        // If loading failed or data is invalid, initialize default file system
-        console_putstr("Initializing new file system.\n");
-        memset(file_system, 0, sizeof(file_system)); // Clear the array
-
-        // Create root directory
-        strcpy(file_system[0].name, "/");
-        strcpy(file_system[0].path, "/");
-        file_system[0].is_directory = 1;
-        file_system[0].size = 0;
-        file_system[0].start_lba = 0; // Root directory doesn't have data sectors
-        file_system[0].num_sectors = 0;
-        file_system[0].permissions = 0755;
-        file_count = 1;
-
-        // Create home directory
-        strcpy(file_system[1].name, "home");
-        strcpy(file_system[1].path, "/home");
-        file_system[1].is_directory = 1;
-        file_system[1].size = 0;
-        file_system[1].start_lba = 0; // Home directory doesn't have data sectors
-        file_system[1].num_sectors = 0;
-        file_system[1].permissions = 0755;
-        file_count = 2;
-
-        // Save the newly initialized file system to disk
-        save_file_system_metadata();
-    }
-    // Set initial current directory
-    strcpy(current_dir, "/");
-    strcpy(home_dir, "/home");
-}
-
-// Function to find a file or directory by its full path
-int find_file(const char* path) {
-    for (int i = 0; i < file_count; i++) {
-        if (strcmp(file_system[i].path, path) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-// Function to get the full path of a file or directory
-void get_full_path(const char* name, char* full_path) {
-    if (name[0] == '/') {
-        strcpy(full_path, name);
-    } else {
-        strcpy(full_path, current_dir);
-        if (strcmp(current_dir, "/") != 0) {
-            strcat(full_path, "/");
-        }
-        strcat(full_path, name);
-    }
-}
-
-// Disk storage functions
-// TODO: Implement actual disk read/write using the IDE driver
-void read_from_disk(uint32 lba, uint8 num_sectors, uint32 buffer) {
-    ide_read_sectors(0, num_sectors, lba, buffer); // Assuming drive 0
-}
-
-void write_to_disk(uint32 lba, uint8 num_sectors, uint32 buffer) {
-    ide_write_sectors(0, num_sectors, lba, buffer); // Assuming drive 0
-}
-
-// Nano editor structures and defines
-#define MAX_LINE_LENGTH 80
-#define MAX_LINES 100
-#define MAX_EDITOR_SIZE (MAX_LINE_LENGTH * MAX_LINES)
-
 typedef struct {
     char lines[MAX_LINES][MAX_LINE_LENGTH];
     int line_count;
@@ -207,9 +75,9 @@ void editor_load_file(Editor* editor) {
     // TODO: Implement loading from disk
     // This will need to read sectors from disk based on file_system[file_index].start_lba and num_sectors
     // and then parse the content into editor lines.
-    if (file_system[file_index].size > 0 && file_system[file_index].num_sectors > 0) {
+    if (file_system[file_index].size > 0) {
         char file_content_buffer[file_system[file_index].size + 1]; // Temporary buffer
-        read_from_disk(file_system[file_index].start_lba, file_system[file_index].num_sectors, (uint32)file_content_buffer);
+        memcpy(file_content_buffer, file_system[file_index].content, file_system[file_index].size);
         file_content_buffer[file_system[file_index].size] = '\0'; // Null-terminate
 
         int line = 0;
@@ -459,6 +327,7 @@ void cmd_clear() {
 }
 
 void cmd_exit() {
+    save_file_system(); // Сохраняем файловую систему перед завершением
     console_putstr("Shutting down...\n");
     
     // Try to use ACPI shutdown
@@ -474,6 +343,7 @@ void cmd_exit() {
 }
 
 void cmd_reboot() {
+    save_file_system(); // Сохраняем файловую систему перед перезагрузкой
     console_putstr("Rebooting...\n");
     
     // Try keyboard controller reset
@@ -568,8 +438,8 @@ void cmd_mkdir(char* args) {
     file_system[file_count].size = 0;
     strcpy(file_system[file_count].path, full_path);
     file_system[file_count].permissions = 0755;
-    file_system[file_count].start_lba = 0; // Directories don't have data sectors
-    file_system[file_count].num_sectors = 0;
+    // Для директорий и новых файлов просто очищаем content
+    file_system[file_count].content[0] = '\0';
     file_count++;
     console_printf("Directory '%s' created\n", args);
 }
@@ -622,8 +492,8 @@ void cmd_touch(char* args) {
     file_system[file_count].size = 0;
     strcpy(file_system[file_count].path, full_path);
     file_system[file_count].permissions = 0644;
-    file_system[file_count].start_lba = 0; // New files are empty, no sectors allocated yet
-    file_system[file_count].num_sectors = 0;
+    // Для директорий и новых файлов просто очищаем content
+    file_system[file_count].content[0] = '\0'; // New files are empty, no content allocated yet
     file_count++;
     console_printf("File '%s' created\n", args);
 }
@@ -780,77 +650,6 @@ typedef struct {
 
 MouseTest mouse_test;
 
-// Disk storage structures
-#define DISK_SECTOR_SIZE 512
-#define DISK_STORAGE_START_LBA 1024 // Start writing files after the first 1024 sectors (bootloader, kernel, etc.)
-
-// File system structures and defines (Disk based)
-// #define MAX_FILES 100 // Already defined
-// #define MAX_FILENAME 32 // Already defined
-// #define MAX_PATH_LENGTH 256 // Already defined
-
-typedef struct {
-    char name[MAX_FILENAME];
-    char path[MAX_PATH_LENGTH];
-    int is_directory;
-    int size; // Size in bytes
-    uint32 start_lba; // Starting Logical Block Address on disk
-    uint32 num_sectors; // Number of sectors occupied on disk
-    int permissions; // Simple permissions (e.g., 0755)
-} FileEntry_Disk;
-
-// Use disk-based file system
-FileEntry_Disk file_system_disk[MAX_FILES];
-int file_count_disk = 0;
-char current_dir_disk[MAX_PATH_LENGTH] = "/";
-char home_dir_disk[MAX_PATH_LENGTH] = "/";
-
-// Function to initialize the disk-based file system
-void init_file_system_disk() {
-    // TODO: Implement loading file system structure from disk
-    // For now, create root and home directories in memory representation
-    strcpy(file_system_disk[0].name, "/");
-    strcpy(file_system_disk[0].path, "/");
-    file_system_disk[0].is_directory = 1;
-    file_system_disk[0].size = 0;
-    file_system_disk[0].start_lba = 0; // Root directory doesn't have data sectors
-    file_system_disk[0].num_sectors = 0;
-    file_system_disk[0].permissions = 0755;
-    file_count_disk = 1;
-
-    strcpy(file_system_disk[1].name, "home");
-    strcpy(file_system_disk[1].path, "/home");
-    file_system_disk[1].is_directory = 1;
-    file_system_disk[1].size = 0;
-    file_system_disk[1].start_lba = 0; // Home directory doesn't have data sectors
-    file_system_disk[1].num_sectors = 0;
-    file_system_disk[1].permissions = 0755;
-    file_count_disk = 2;
-}
-
-// Function to find a file or directory by its full path (Disk based)
-int find_file_disk(const char* path) {
-    for (int i = 0; i < file_count_disk; i++) {
-        if (strcmp(file_system_disk[i].path, path) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-// Function to get the full path of a file or directory (Disk based)
-void get_full_path_disk(const char* name, char* full_path) {
-    if (name[0] == '/') {
-        strcpy(full_path, name);
-    } else {
-        strcpy(full_path, current_dir_disk);
-        if (strcmp(current_dir_disk, "/") != 0) {
-            strcat(full_path, "/");
-        }
-        strcat(full_path, name);
-    }
-}
-
 // USB storage structures
 #define USB_SECTOR_SIZE 512
 #define USB_STORAGE_START 0x100000  // 1MB offset in memory
@@ -916,20 +715,6 @@ uint8 check_mouse_test() {
     return 0;
 }
 
-// Disk storage functions
-// TODO: Implement actual disk read/write using the IDE driver
-void read_from_disk(uint32 lba, uint8 num_sectors, uint32 buffer) {
-    // For now, simulate reading from memory (replace with IDE driver calls)
-    // memcpy((void*)buffer, (void*)(DISK_STORAGE_START_LBA * DISK_SECTOR_SIZE + lba * DISK_SECTOR_SIZE), num_sectors * DISK_SECTOR_SIZE);
-    ide_read_sectors(0, num_sectors, lba, buffer); // Assuming drive 0
-}
-
-void write_to_disk(uint32 lba, uint8 num_sectors, uint32 buffer) {
-    // For now, simulate writing to memory (replace with IDE driver calls)
-    // memcpy((void*)(DISK_STORAGE_START_LBA * DISK_SECTOR_SIZE + lba * DISK_SECTOR_SIZE), (void*)buffer, num_sectors * DISK_SECTOR_SIZE);
-    ide_write_sectors(0, num_sectors, lba, buffer); // Assuming drive 0
-}
-
 // USB storage functions
 void write_to_usb(void* data, uint32 size) {
     // TODO: Implement proper USB storage write
@@ -989,12 +774,6 @@ extern uint8 g_back_color;
 // Global variable for mouse status (defined in mouse.c)
 extern MOUSE_STATUS g_status;
 
-// VGA constants (defined in vga.h)
-extern const uint8 COLOR_WHITE;
-extern const uint8 COLOR_BLACK;
-extern const uint8 COLOR_BRIGHT_GREEN;
-extern const int VGA_WIDTH;
-
 void kmain() {
     gdt_init();
     idt_init();
@@ -1021,7 +800,8 @@ void kmain() {
     keyboard_init();
     mouse_init();
     ata_init(); // Initialize the ATA driver
-    init_file_system(); // Initialize the disk-based file system (renamed function)
+    file_system_startup(); // Загрузка файловой системы с диска
+    init_file_system(); // Инициализация структуры, если загрузка не удалась
 
     console_putstr("Welcome to IntrenOS!\n");
     console_putstr("Type 'help' for available commands.\n\n");

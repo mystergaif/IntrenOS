@@ -29,5 +29,8 @@ extern char home_dir[MAX_PATH_LENGTH];
 void init_file_system();
 int find_file(const char* path);
 void get_full_path(const char* name, char* full_path);
+void save_file_system();
+void load_file_system();
+void file_system_startup();
 
 #endif // FILESYSTEM_H
