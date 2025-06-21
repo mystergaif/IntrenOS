@@ -89,10 +89,10 @@ sudo make install-target-libgcc
     make clean
     ```
 
-## Лицензия
+## License
 
-Проект распространяется по лицензии InterXlicense:
-- Бесплатно для личного, образовательного и домашнего использования.
-- Для коммерческого использования обязательно указать myster_gaif в списке авторов и уведомить по email: mystergaif@gmail.com.
-- При изменениях необходимо уведомить автора.
-- Текст лицензии см. в файле LICENSE.
+This project is distributed under the InterXlicense (English only):
+- Free for personal, educational, and non-commercial home use.
+- For any commercial use, you must include myster_gaif as an author and notify at mystergaif@gmail.com.
+- You must notify the author about any modifications.
+- See LICENSE for the full license text and all legal details.
